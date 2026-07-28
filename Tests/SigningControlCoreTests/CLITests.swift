@@ -135,6 +135,29 @@ final class CLITests: XCTestCase {
         )
     }
 
+    func testDerivePublicKeyReturnsNoPrivateMaterial() {
+        let input = Data(seed.base64EncodedString().utf8)
+        let result = SignerCLI.run(
+            arguments: [
+                "derive-public-key",
+                "--private-key-stdin",
+                "--format",
+                "json"
+            ],
+            standardInput: input
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.standardError, Data())
+        let text = String(decoding: result.standardOutput, as: UTF8.self)
+        XCTAssertEqual(
+            text,
+            #"{"algorithm":"Ed25519","public_key_base64":"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=","public_key_sha256":"fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889","status":"derived"}"#
+                + "\n"
+        )
+        XCTAssertFalse(text.contains(seed.base64EncodedString()))
+    }
+
     private func preparedDirectory() throws -> URL {
         let directory = try temporaryDirectory()
         try makeRequestData().write(to: directory.appendingPathComponent("request.json"))

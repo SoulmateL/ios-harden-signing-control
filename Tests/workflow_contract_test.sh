@@ -74,6 +74,7 @@ ci_text = File.read(ARGV[0])
 assert(!ci_text.include?("pull_request_target"), "CI 禁止 pull_request_target")
 assert(ci_text.include?("swift test"), "CI 必须运行 Swift 测试")
 assert(ci_text.include?("workflow_contract_test.sh"), "CI 必须检查工作流契约")
+assert(ci_text.include?("bootstrap_contract_test.sh"), "CI 必须检查生产 bootstrap 契约")
 assert(ci_text.include?("validate_repository.sh"), "CI 必须扫描仓库")
 
 puts "GitHub Actions 工作流契约检查通过"

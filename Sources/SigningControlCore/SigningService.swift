@@ -42,10 +42,18 @@ public struct SigningService: Sendable {
     }
 
     public func publicKeySHA256(privateKeyInput: Data) throws -> String {
+        try derivePublicKey(privateKeyInput: privateKeyInput).publicKeySHA256
+    }
+
+    public func derivePublicKey(privateKeyInput: Data) throws -> DerivedPublicKey {
         let seed = try decodeSeed(privateKeyInput)
         do {
             let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
-            return privateKey.publicKey.rawRepresentation.sha256Hex
+            let publicKey = privateKey.publicKey.rawRepresentation
+            return DerivedPublicKey(
+                publicKeyBase64: publicKey.base64EncodedString(),
+                publicKeySHA256: publicKey.sha256Hex
+            )
         } catch {
             throw SigningControlError.invalidPrivateKey
         }
@@ -89,4 +97,9 @@ public struct SigningService: Sendable {
         }
         return decoded
     }
+}
+
+public struct DerivedPublicKey: Equatable, Sendable {
+    public let publicKeyBase64: String
+    public let publicKeySHA256: String
 }

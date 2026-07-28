@@ -25,5 +25,8 @@ jobs:
       - name: Check Seatbelt contract
         run: bash Tests/sandbox_contract_test.sh
 
+      - name: Check production bootstrap gate
+        run: bash Tests/bootstrap_contract_test.sh
+
       - name: Scan repository
         run: bash Scripts/validate_repository.sh
