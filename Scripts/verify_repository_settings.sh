@@ -23,15 +23,27 @@ verify_public_owner_repository() {
         jq -e '
             .private == false and
             .visibility == "public" and
-            .owner.login == "SoulmateL"
+            .owner.login == "SoulmateL" and
+            .security_and_analysis.secret_scanning.status == "enabled" and
+            .security_and_analysis.secret_scanning_push_protection.status == "enabled"
         ' > /dev/null || {
-        echo "错误：$repository 必须是 SoulmateL 的公开仓库" >&2
+        echo "错误：$repository 必须是 SoulmateL 的公开仓库，且必须启用 Secret 扫描与 push protection" >&2
         exit 1
     }
 }
 
 verify_public_owner_repository "$control_repository"
 verify_private_owner_repository "$requests_repository"
+
+gh api "repos/$control_repository/actions/permissions" |
+    jq -e '
+        .enabled == true and
+        .allowed_actions == "all" and
+        .sha_pinning_required == true
+    ' > /dev/null || {
+    echo "错误：控制仓库必须启用 Actions 并强制 Action 固定 SHA" >&2
+    exit 1
+}
 
 gh api "repos/$requests_repository/actions/permissions" |
     jq -e '.enabled == false' > /dev/null || {

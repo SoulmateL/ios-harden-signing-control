@@ -77,6 +77,7 @@
 ## 5. 权限模型
 
 - 控制仓库公开读取、不添加协作者，只有所有者 `SoulmateL` 可写入或手动触发工作流。
+- 控制仓库强制 Action 使用固定 SHA，并启用 GitHub Secret 扫描与 push protection。
 - 请求仓库成员权限决定谁能提交请求。
 - 从请求仓库移除成员后，该成员不能推送新请求。
 - 签名工作流只能由控制仓库所有者手动触发。
@@ -114,6 +115,9 @@
 签名任务使用公开控制仓库中的标准 GitHub 托管 macOS runner 和系统 CryptoKit。
 公开仓库的标准 runner 按 GitHub 规则免费；不得切换到收费的大型 runner。任何
 runner 不可用或审批检查失败时停止，不启用付费超额。
+
+production bootstrap 在生成 seed 前必须验证控制仓库的公开状态、唯一协作者、Action
+SHA 固定、Secret 扫描和 push protection；任何设置回退都必须失败关闭。
 
 控制仓库提供一个无第三方依赖的短生命周期 signer：
 

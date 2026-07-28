@@ -7,6 +7,7 @@
 
 - Swift/CryptoKit Ed25519 signer、严格请求协议和 Seatbelt 断网沙箱已实现；
 - 控制仓库公开，仅包含可审查的代码、工作流和公开策略；生产 seed 与部署私钥只保存在 GitHub Secret；
+- 控制仓库强制 Action 固定 SHA，并启用 GitHub Secret 扫描和 push protection；
 - 请求仓库保持私有、不保存 Secret，并已关闭 Actions；
 - 生产工作流只允许 `SoulmateL` 手动触发；
 - `PRODUCTION_READY=false`，没有生成生产 seed；

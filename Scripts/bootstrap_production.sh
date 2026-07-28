@@ -40,6 +40,7 @@ actual_repository="$(
     echo "错误：只能为 $expected_repository 执行生产 bootstrap" >&2
     exit 2
 }
+Scripts/verify_repository_settings.sh
 [[ ! -e Config/production-policy.json ]] || {
     echo "错误：生产策略已存在，拒绝覆盖或重复生成密钥" >&2
     exit 2

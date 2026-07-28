@@ -14,6 +14,8 @@
 不要在聊天、Issue、README、截图或命令参数中提供 seed、私钥、U 盘密码。
 当前自动化使用的 GitHub 权限不能读取个人账单设置，因此预算状态必须由所有者在
 GitHub Billing 页面现场核对；没有确认时不要继续。
+脚本会先检查控制仓库的公开状态、唯一协作者、Action SHA 固定、Secret 扫描和
+push protection；任一检查失败时不会生成 seed。
 
 ## 现场执行
 
