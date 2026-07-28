@@ -39,6 +39,8 @@ job = jobs.values.first
 guard = job.fetch("if", "")
 assert(guard.include?("github.actor == 'SoulmateL'"), "缺少所有者 guard")
 assert(guard.include?("vars.PRODUCTION_READY == 'true'"), "缺少生产就绪 guard")
+assert(guard.include?("github.ref == 'refs/heads/main'"), "生产签名只能从 main 运行")
+assert(job["timeout-minutes"] == 10, "生产签名 job 必须有 10 分钟超时")
 
 steps = job.fetch("steps")
 checkout_steps = steps.select { |step| step.key?("uses") }

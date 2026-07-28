@@ -31,10 +31,6 @@ plist_value() {
     /usr/bin/plutil -extract "$1" raw -o - "$information_plist" 2>/dev/null
 }
 
-[[ "$(plist_value Mounted)" == "true" ]] || {
-    echo "错误：恢复卷未挂载" >&2
-    exit 2
-}
 [[ "$(plist_value Writable)" == "true" ]] || {
     echo "错误：恢复卷不可写" >&2
     exit 2
@@ -43,7 +39,7 @@ plist_value() {
     echo "错误：恢复卷必须使用 APFS" >&2
     exit 2
 }
-[[ "$(plist_value Encrypted)" == "true" ]] || {
+[[ "$(plist_value Encryption)" == "true" ]] || {
     echo "错误：恢复卷必须启用加密" >&2
     exit 2
 }

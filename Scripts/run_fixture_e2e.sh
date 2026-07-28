@@ -25,9 +25,9 @@ signer="$repository_root/.build/debug/ios-harden-actions-signer"
 fixture_seed="$repository_root/Fixtures/fixture-seed.b64"
 fixture_policy="$repository_root/Config/fixture-policy.json"
 
-request_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
-[[ "$request_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
-run_root="$repository_root/.build/fixture-e2e/$request_id"
+run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+[[ "$run_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+run_root="$repository_root/.build/fixture-e2e/$run_id"
 mkdir -p "$run_root"
 bare_repository="$run_root/transport.git"
 working_repository="$run_root/requests-work"
@@ -38,36 +38,24 @@ git clone "$bare_repository" "$working_repository"
 git -C "$working_repository" config user.name "ios-harden-fixture"
 git -C "$working_repository" config user.email "fixture@example.invalid"
 
-request_directory="$working_repository/requests/$request_id"
-mkdir "$request_directory"
 current_epoch="$(date +%s)"
+fixture_request="$run_root/request.json"
 jq -cS \
     --argjson current_epoch "$current_epoch" \
     '.created_at_epoch_seconds = $current_epoch' \
     Fixtures/request.json |
-    tr -d '\n' > "$request_directory/request.json"
-validation="$(
-    "$signer" validate-request \
-        --request "$request_directory/request.json"
+    tr -d '\n' > "$fixture_request"
+submission="$(
+    IOS_HARDEN_SIGNER="$signer" \
+        "$working_repository/Scripts/submit_request.sh" \
+        --request "$fixture_request" \
+        --source-revision fixture-e2e
 )"
-request_sha256="$(jq -r '.request_sha256' <<< "$validation")"
-jq -cS -n \
-    --arg bundle_identifier "$(jq -r '.bundle_identifier' <<< "$validation")" \
-    --arg build_id "$(jq -r '.build_id' <<< "$validation")" \
-    --arg key_id "$(jq -r '.key_id' <<< "$validation")" \
-    --arg request_id "$request_id" \
-    --arg request_sha256 "$request_sha256" \
-    '{
-        build_id: $build_id,
-        bundle_identifier: $bundle_identifier,
-        key_id: $key_id,
-        request_id: $request_id,
-        request_sha256: $request_sha256,
-        source_revision: "fixture-e2e"
-    }' > "$request_directory/summary.json"
-git -C "$working_repository" add "requests/$request_id"
-git -C "$working_repository" commit -m "request: fixture $request_id"
-git -C "$working_repository" push origin HEAD:main
+request_id="$(awk -F= '$1 == "request_id" { print $2 }' <<< "$submission")"
+request_sha256="$(awk -F= '$1 == "request_sha256" { print $2 }' <<< "$submission")"
+[[ "$request_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+[[ "$request_sha256" =~ ^[0-9a-f]{64}$ ]]
+request_directory="$working_repository/requests/$request_id"
 
 output_directory="$run_root/output"
 mkdir "$output_directory"
@@ -117,13 +105,18 @@ Scripts/publish_response.sh \
 git clone "$bare_repository" "$verification_repository"
 published_request="$verification_repository/requests/$request_id/request.json"
 published_response="$verification_repository/responses/$request_id/response.json"
+fetched_response="$run_root/fetched-response.json"
+"$verification_repository/Scripts/fetch_response.sh" \
+    --request-id "$request_id" \
+    --destination "$fetched_response" > /dev/null
+cmp "$published_response" "$fetched_response"
 "$signer" verify-response \
     --request "$published_request" \
-    --response "$published_response" \
+    --response "$fetched_response" \
     --public-key-base64 "$public_key_base64" > /dev/null
 
 response_sha256="$(
-    shasum -a 256 "$published_response" |
+    shasum -a 256 "$fetched_response" |
         awk '{print $1}'
 )"
 receipt_temporary="$run_root/last-run.json"

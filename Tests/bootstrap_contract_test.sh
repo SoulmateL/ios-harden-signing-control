@@ -26,7 +26,13 @@ grep -Fq 'diskutil info -plist' "$volume_verifier"
 grep -Fq 'plutil' "$volume_verifier"
 grep -Fq 'RemovableMedia' "$volume_verifier"
 grep -Fq 'FilesystemType' "$volume_verifier"
-grep -Fq 'Encrypted' "$volume_verifier"
+grep -Fq 'Encryption' "$volume_verifier"
+grep -Fq '付费超额' "$guide"
+grep -Fq '预算为 0' "$guide"
+if grep -Fq 'plist_value Mounted' "$volume_verifier"; then
+    echo "错误：不得依赖并非所有 APFS 卷都有的 Mounted 字段" >&2
+    exit 1
+fi
 
 if grep -Eq \
     'gh secret set IOS_HARDEN_ED25519_SEED_B64.*(--body|--app|--env)' \

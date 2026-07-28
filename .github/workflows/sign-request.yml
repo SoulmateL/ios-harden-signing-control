@@ -19,8 +19,10 @@ jobs:
   sign:
     if: >-
       ${{ github.actor == 'SoulmateL' &&
-          vars.PRODUCTION_READY == 'true' }}
+          vars.PRODUCTION_READY == 'true' &&
+          github.ref == 'refs/heads/main' }}
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
       - name: Checkout reviewed control code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683

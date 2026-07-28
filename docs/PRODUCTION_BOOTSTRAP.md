@@ -6,11 +6,14 @@
 
 - GitHub 当前登录用户是 `SoulmateL`；
 - 本仓库远端是 `SoulmateL/ios-harden-signing-control`；
+- GitHub Actions 的付费超额已关闭，账号级 Actions 预算为 0；
 - 一只由所有者现场解锁的、加密 APFS、可写且可移除的 U 盘；
 - 真实 App Bundle ID；
 - 已通过全部测试的 release signer 绝对路径。
 
 不要在聊天、Issue、README、截图或命令参数中提供 seed、私钥、U 盘密码。
+当前自动化使用的 GitHub 权限不能读取个人账单设置，因此预算状态必须由所有者在
+GitHub Billing 页面现场核对；没有确认时不要继续。
 
 ## 现场执行
 
