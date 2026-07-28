@@ -114,6 +114,27 @@ final class CLITests: XCTestCase {
         )
     }
 
+    func testValidateRequestReturnsOnlyPublicCanonicalSummary() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let request = directory.appendingPathComponent("request.json")
+        let requestData = try makeRequestData()
+        try requestData.write(to: request)
+
+        let result = SignerCLI.run(
+            arguments: ["validate-request", "--request", request.path],
+            standardInput: Data()
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.standardError, Data())
+        XCTAssertEqual(
+            String(decoding: result.standardOutput, as: UTF8.self),
+            #"{"build_id":"42","bundle_identifier":"com.example.App","key_id":"skb-integrity-fixture","request_sha256":"\#(requestData.sha256Hex)","status":"valid"}"#
+                + "\n"
+        )
+    }
+
     private func preparedDirectory() throws -> URL {
         let directory = try temporaryDirectory()
         try makeRequestData().write(to: directory.appendingPathComponent("request.json"))

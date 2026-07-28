@@ -21,6 +21,13 @@ public enum SignerCLI {
         if arguments == ["version", "--format", "json"] {
             return versionResult()
         }
+        if
+            arguments.count == 3,
+            arguments[0] == "validate-request",
+            arguments[1] == "--request"
+        {
+            return validateRequest(path: arguments[2])
+        }
         guard
             arguments.count == 8,
             arguments[0] == "sign",
@@ -85,6 +92,37 @@ public enum SignerCLI {
         )
     }
 
+    private static func validateRequest(path: String) -> SignerCLIResult {
+        guard let requestURL = absoluteFileURL(path) else {
+            return failure(.invalidFile)
+        }
+        do {
+            let data = try SecureFiles.readRegularFile(at: requestURL)
+            let request = try IntegritySigningRequest.decode(data)
+            guard try request.canonicalData() == data else {
+                throw SigningControlError.invalidJSON
+            }
+            let receipt = RequestValidationReceipt(
+                buildID: request.buildID,
+                bundleIdentifier: request.bundleIdentifier,
+                keyID: request.keyID,
+                requestSHA256: data.sha256Hex,
+                status: "valid"
+            )
+            var output = try StrictJSON.encode(receipt)
+            output.append(0x0A)
+            return SignerCLIResult(
+                exitCode: 0,
+                standardOutput: output,
+                standardError: Data()
+            )
+        } catch let error as SigningControlError {
+            return failure(error)
+        } catch {
+            return failure(.invalidJSON)
+        }
+    }
+
     private static func absoluteFileURL(_ path: String) -> URL? {
         guard path.hasPrefix("/"), !path.hasSuffix("/") else {
             return nil
@@ -117,6 +155,22 @@ private struct SigningReceipt: Encodable {
     enum CodingKeys: String, CodingKey {
         case keyID = "key_id"
         case publicKeySHA256 = "public_key_sha256"
+        case requestSHA256 = "request_sha256"
+        case status
+    }
+}
+
+private struct RequestValidationReceipt: Encodable {
+    let buildID: String
+    let bundleIdentifier: String
+    let keyID: String
+    let requestSHA256: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case buildID = "build_id"
+        case bundleIdentifier = "bundle_identifier"
+        case keyID = "key_id"
         case requestSHA256 = "request_sha256"
         case status
     }
