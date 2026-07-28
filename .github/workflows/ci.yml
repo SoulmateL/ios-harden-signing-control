@@ -1,0 +1,29 @@
+name: CI
+
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Test Swift package
+        run: swift test
+
+      - name: Check workflow contract
+        run: bash Tests/workflow_contract_test.sh
+
+      - name: Check Seatbelt contract
+        run: bash Tests/sandbox_contract_test.sh
+
+      - name: Scan repository
+        run: bash Scripts/validate_repository.sh

@@ -1,0 +1,161 @@
+name: Sign ios-harden request
+
+"on":
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Request UUID from the request repository
+        required: true
+        type: string
+      request_sha256:
+        description: Lowercase SHA-256 shown in the request summary
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    if: >-
+      ${{ github.actor == 'SoulmateL' &&
+          vars.PRODUCTION_READY == 'true' }}
+    runs-on: macos-15
+    steps:
+      - name: Checkout reviewed control code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Validate approval inputs
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          REQUEST_SHA256: ${{ inputs.request_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+          [[ "$REQUEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Build signer before secret access
+        run: swift build -c release
+
+      - name: Clone secret-free request repository
+        env:
+          SIGNING_REQUESTS_DEPLOY_KEY: ${{ secrets.SIGNING_REQUESTS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          set +x
+          ulimit -c 0
+          [[ -n "$SIGNING_REQUESTS_DEPLOY_KEY" ]]
+          install -d -m 700 "$RUNNER_TEMP/signing-ssh"
+          key_path="$RUNNER_TEMP/signing-ssh/deploy-key"
+          known_hosts="$RUNNER_TEMP/signing-ssh/known_hosts"
+          printf '%s\n' "$SIGNING_REQUESTS_DEPLOY_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          ssh-keyscan -t ed25519 github.com > "$known_hosts"
+          chmod 600 "$known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o UserKnownHostsFile=$known_hosts"
+          git clone --depth 1 \
+            git@github.com:SoulmateL/ios-harden-signing-requests.git \
+            "$RUNNER_TEMP/requests-repo"
+          git -C "$RUNNER_TEMP/requests-repo" config core.sshCommand "$GIT_SSH_COMMAND"
+
+      - name: Validate exact request bytes
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          REQUEST_SHA256: ${{ inputs.request_sha256 }}
+        run: |
+          set -euo pipefail
+          requests_repo="$RUNNER_TEMP/requests-repo"
+          request_path="$requests_repo/requests/$REQUEST_ID/request.json"
+          summary_path="$requests_repo/requests/$REQUEST_ID/summary.json"
+          response_directory="$requests_repo/responses/$REQUEST_ID"
+          [[ -f "$request_path" && ! -L "$request_path" ]]
+          [[ -f "$summary_path" && ! -L "$summary_path" ]]
+          [[ ! -e "$response_directory" && ! -L "$response_directory" ]]
+          validation="$(
+            .build/release/ios-harden-actions-signer \
+              validate-request --request "$request_path"
+          )"
+          [[ "$(jq -r '.request_sha256' <<< "$validation")" == "$REQUEST_SHA256" ]]
+          [[ "$(jq -r '.request_id' "$summary_path")" == "$REQUEST_ID" ]]
+          [[ "$(jq -r '.request_sha256' "$summary_path")" == "$REQUEST_SHA256" ]]
+          [[ "$(jq -r '.key_id' "$summary_path")" == "skb-integrity-prod-2026-03" ]]
+
+      - name: Sign in network-denied Seatbelt
+        env:
+          IOS_HARDEN_ED25519_SEED_B64: ${{ secrets.IOS_HARDEN_ED25519_SEED_B64 }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          set +x
+          ulimit -c 0
+          [[ -n "$IOS_HARDEN_ED25519_SEED_B64" ]]
+          output_directory="$RUNNER_TEMP/signing-output/$REQUEST_ID"
+          install -d -m 700 "$output_directory"
+          export POLICY_PATH="$GITHUB_WORKSPACE/Config/production-policy.json"
+          export REQUEST_PATH="$RUNNER_TEMP/requests-repo/requests/$REQUEST_ID/request.json"
+          export RESPONSE_PATH="$output_directory/response.json"
+          export SIGNER_PATH="$GITHUB_WORKSPACE/.build/release/ios-harden-actions-signer"
+          printf '%s' "$IOS_HARDEN_ED25519_SEED_B64" |
+            "$GITHUB_WORKSPACE/Scripts/run_signer_sandboxed.sh"
+          unset IOS_HARDEN_ED25519_SEED_B64
+
+      - name: Create public audit record
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          REQUEST_SHA256: ${{ inputs.request_sha256 }}
+          RUN_ACTOR: ${{ github.actor }}
+          RUN_ID: ${{ github.run_id }}
+          CONTROL_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          requests_repo="$RUNNER_TEMP/requests-repo"
+          request="$requests_repo/requests/$REQUEST_ID/request.json"
+          summary="$requests_repo/requests/$REQUEST_ID/summary.json"
+          response="$RUNNER_TEMP/signing-output/$REQUEST_ID/response.json"
+          audit="$RUNNER_TEMP/signing-output/$REQUEST_ID/audit.json"
+          signer_sha256="$(
+            shasum -a 256 .build/release/ios-harden-actions-signer |
+              awk '{print $1}'
+          )"
+          jq -cS -n \
+            --arg actor "$RUN_ACTOR" \
+            --arg bundle_identifier "$(jq -r '.bundle_identifier' "$request")" \
+            --arg build_id "$(jq -r '.build_id' "$request")" \
+            --arg control_commit "$CONTROL_COMMIT" \
+            --arg github_run_id "$RUN_ID" \
+            --arg key_id "$(jq -r '.key_id' "$response")" \
+            --arg manifest_sha256 "$(jq -r '.manifest_sha256' "$request")" \
+            --arg public_key_sha256 "$(jq -r '.public_key_sha256' "$response")" \
+            --arg request_id "$REQUEST_ID" \
+            --arg request_sha256 "$REQUEST_SHA256" \
+            --arg signer_sha256 "$signer_sha256" \
+            --arg source_revision "$(jq -r '.source_revision' "$summary")" \
+            --argjson signed_at_epoch_seconds "$(date +%s)" \
+            '{
+              actor: $actor,
+              build_id: $build_id,
+              bundle_identifier: $bundle_identifier,
+              control_commit: $control_commit,
+              github_run_id: $github_run_id,
+              key_id: $key_id,
+              manifest_sha256: $manifest_sha256,
+              public_key_sha256: $public_key_sha256,
+              request_id: $request_id,
+              request_sha256: $request_sha256,
+              schema_version: 1,
+              signed_at_epoch_seconds: $signed_at_epoch_seconds,
+              signer_sha256: $signer_sha256,
+              source_revision: $source_revision,
+              status: "signed"
+            }' > "$audit"
+
+      - name: Publish signed response
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          Scripts/publish_response.sh \
+            --requests-repo "$RUNNER_TEMP/requests-repo" \
+            --request-id "$REQUEST_ID" \
+            --response "$RUNNER_TEMP/signing-output/$REQUEST_ID/response.json" \
+            --audit "$RUNNER_TEMP/signing-output/$REQUEST_ID/audit.json"
