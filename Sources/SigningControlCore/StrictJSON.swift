@@ -10,6 +10,10 @@ public enum SigningControlError: Error, Equatable, LocalizedError {
     case destinationExists
     case fileOperationFailed
     case unsupportedCommand
+    case invalidPrivateKey
+    case policyRejected
+    case requestExpired
+    case requestFromFuture
 
     public var errorDescription: String? {
         switch self {
@@ -29,6 +33,14 @@ public enum SigningControlError: Error, Equatable, LocalizedError {
             "文件操作失败"
         case .unsupportedCommand:
             "不支持的命令"
+        case .invalidPrivateKey:
+            "私钥输入无效"
+        case .policyRejected:
+            "请求不符合签名策略"
+        case .requestExpired:
+            "签名请求已过期"
+        case .requestFromFuture:
+            "签名请求时间超出允许范围"
         }
     }
 }
@@ -69,6 +81,25 @@ enum StrictJSON {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(value)
+    }
+
+    static func matches(_ value: String, pattern: String) -> Bool {
+        value.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    static func isSafeIdentifier(_ value: String) -> Bool {
+        matches(value, pattern: #"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"#)
+    }
+
+    static func isBundleIdentifier(_ value: String) -> Bool {
+        matches(
+            value,
+            pattern: #"^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$"#
+        )
+    }
+
+    static func isSHA256(_ value: String) -> Bool {
+        matches(value, pattern: #"^[0-9a-f]{64}$"#)
     }
 }
 

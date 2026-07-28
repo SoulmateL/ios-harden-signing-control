@@ -1,0 +1,7 @@
+{
+  "revoked_key_ids": [
+    "skb-integrity-prod-2026-01",
+    "skb-integrity-prod-2026-02"
+  ],
+  "shared_public_key_sha256": "409c4c10066e349b5e30b368af22cd17a608e7f7cc98f4b0ff5dd84c04f47953"
+}

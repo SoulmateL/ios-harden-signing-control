@@ -1,0 +1,11 @@
+{
+  "allowed_bundle_identifiers": [
+    "com.example.App"
+  ],
+  "build_id_pattern": "^[0-9]+$",
+  "key_id": "skb-integrity-fixture",
+  "max_future_skew_seconds": 120,
+  "max_request_age_seconds": 600,
+  "public_key_sha256": "fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889",
+  "schema_version": 1
+}
