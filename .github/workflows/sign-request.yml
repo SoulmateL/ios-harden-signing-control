@@ -37,7 +37,13 @@ jobs:
           [[ "$REQUEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
 
       - name: Build signer before secret access
-        run: swift build -c release
+        run: |
+          set -euo pipefail
+          swift build -c release
+          shasum -a 256 .build/release/ios-harden-actions-signer \
+            > "$RUNNER_TEMP/signer.sha256"
+          chmod 555 .build/release/ios-harden-actions-signer
+          chmod 444 "$RUNNER_TEMP/signer.sha256"
 
       - name: Clone secret-free request repository
         env:
@@ -52,7 +58,9 @@ jobs:
           known_hosts="$RUNNER_TEMP/signing-ssh/known_hosts"
           printf '%s\n' "$SIGNING_REQUESTS_DEPLOY_KEY" > "$key_path"
           chmod 600 "$key_path"
-          ssh-keyscan -t ed25519 github.com > "$known_hosts"
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            > "$known_hosts"
           chmod 600 "$known_hosts"
           export GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o UserKnownHostsFile=$known_hosts"
           git clone --depth 1 \
@@ -62,6 +70,7 @@ jobs:
 
       - name: Validate exact request bytes
         env:
+          APPROVED_IOS_HARDEN_REVISION: ${{ vars.APPROVED_IOS_HARDEN_REVISION }}
           REQUEST_ID: ${{ inputs.request_id }}
           REQUEST_SHA256: ${{ inputs.request_sha256 }}
         run: |
@@ -80,6 +89,30 @@ jobs:
           [[ "$(jq -r '.request_sha256' <<< "$validation")" == "$REQUEST_SHA256" ]]
           [[ "$(jq -r '.request_id' "$summary_path")" == "$REQUEST_ID" ]]
           [[ "$(jq -r '.request_sha256' "$summary_path")" == "$REQUEST_SHA256" ]]
+          jq -e '
+            type == "object" and
+            keys == [
+              "build_id",
+              "bundle_identifier",
+              "ios_harden_revision",
+              "key_id",
+              "manifest_sha256",
+              "request_id",
+              "request_sha256",
+              "source_revision",
+              "submitted_at_epoch_seconds",
+              "submitted_by"
+            ] and
+            (.source_revision | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")) and
+            (.submitted_by | type == "string" and test("^[A-Za-z0-9-]{1,39}$")) and
+            (.submitted_at_epoch_seconds | type == "number" and . >= 0 and floor == .)
+          ' "$summary_path" > /dev/null
+          [[ "$APPROVED_IOS_HARDEN_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(jq -r '.ios_harden_revision' "$summary_path")" == "$APPROVED_IOS_HARDEN_REVISION" ]]
+          [[ "$(jq -r '.bundle_identifier' "$summary_path")" == "$(jq -r '.bundle_identifier' <<< "$validation")" ]]
+          [[ "$(jq -r '.build_id' "$summary_path")" == "$(jq -r '.build_id' <<< "$validation")" ]]
+          [[ "$(jq -r '.manifest_sha256' "$summary_path")" == "$(jq -r '.manifest_sha256' <<< "$validation")" ]]
+          [[ "$(jq -r '.key_id' "$summary_path")" == "$(jq -r '.key_id' <<< "$validation")" ]]
           [[ "$(jq -r '.key_id' "$summary_path")" == "skb-integrity-prod-2026-03" ]]
 
       - name: Sign in network-denied Seatbelt
@@ -91,6 +124,7 @@ jobs:
           set +x
           ulimit -c 0
           [[ -n "$IOS_HARDEN_ED25519_SEED_B64" ]]
+          shasum -a 256 -c "$RUNNER_TEMP/signer.sha256"
           output_directory="$RUNNER_TEMP/signing-output/$REQUEST_ID"
           install -d -m 700 "$output_directory"
           export POLICY_PATH="$GITHUB_WORKSPACE/Config/production-policy.json"
@@ -115,16 +149,14 @@ jobs:
           summary="$requests_repo/requests/$REQUEST_ID/summary.json"
           response="$RUNNER_TEMP/signing-output/$REQUEST_ID/response.json"
           audit="$RUNNER_TEMP/signing-output/$REQUEST_ID/audit.json"
-          signer_sha256="$(
-            shasum -a 256 .build/release/ios-harden-actions-signer |
-              awk '{print $1}'
-          )"
+          signer_sha256="$(awk '{print $1}' "$RUNNER_TEMP/signer.sha256")"
           jq -cS -n \
             --arg actor "$RUN_ACTOR" \
             --arg bundle_identifier "$(jq -r '.bundle_identifier' "$request")" \
             --arg build_id "$(jq -r '.build_id' "$request")" \
             --arg control_commit "$CONTROL_COMMIT" \
             --arg github_run_id "$RUN_ID" \
+            --arg ios_harden_revision "$(jq -r '.ios_harden_revision' "$summary")" \
             --arg key_id "$(jq -r '.key_id' "$response")" \
             --arg manifest_sha256 "$(jq -r '.manifest_sha256' "$request")" \
             --arg public_key_sha256 "$(jq -r '.public_key_sha256' "$response")" \
@@ -132,6 +164,8 @@ jobs:
             --arg request_sha256 "$REQUEST_SHA256" \
             --arg signer_sha256 "$signer_sha256" \
             --arg source_revision "$(jq -r '.source_revision' "$summary")" \
+            --arg submitted_by "$(jq -r '.submitted_by' "$summary")" \
+            --argjson submitted_at_epoch_seconds "$(jq -r '.submitted_at_epoch_seconds' "$summary")" \
             --argjson signed_at_epoch_seconds "$(date +%s)" \
             '{
               actor: $actor,
@@ -139,6 +173,7 @@ jobs:
               bundle_identifier: $bundle_identifier,
               control_commit: $control_commit,
               github_run_id: $github_run_id,
+              ios_harden_revision: $ios_harden_revision,
               key_id: $key_id,
               manifest_sha256: $manifest_sha256,
               public_key_sha256: $public_key_sha256,
@@ -148,7 +183,9 @@ jobs:
               signed_at_epoch_seconds: $signed_at_epoch_seconds,
               signer_sha256: $signer_sha256,
               source_revision: $source_revision,
-              status: "signed"
+              status: "signed",
+              submitted_at_epoch_seconds: $submitted_at_epoch_seconds,
+              submitted_by: $submitted_by
             }' > "$audit"
 
       - name: Publish signed response

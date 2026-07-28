@@ -130,7 +130,7 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(result.standardError, Data())
         XCTAssertEqual(
             String(decoding: result.standardOutput, as: UTF8.self),
-            #"{"build_id":"42","bundle_identifier":"com.example.App","key_id":"skb-integrity-fixture","request_sha256":"\#(requestData.sha256Hex)","status":"valid"}"#
+            #"{"build_id":"42","bundle_identifier":"com.example.App","key_id":"skb-integrity-fixture","manifest_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","request_sha256":"\#(requestData.sha256Hex)","status":"valid"}"#
                 + "\n"
         )
     }

@@ -14,6 +14,9 @@ test -f "$scanner"
 bash -n "$publisher"
 bash -n "$scanner"
 grep -Fq 'push origin HEAD:main' "$publisher"
+grep -Fq 'ios_harden_revision' "$publisher"
+grep -Fq 'submitted_at_epoch_seconds' "$publisher"
+grep -Fq 'submitted_by' "$publisher"
 grep -Fq 'git rev-list --all' "$scanner"
 
 /usr/bin/ruby --disable-gems - "$ci_workflow" "$sign_workflow" <<'RUBY'
@@ -68,6 +71,18 @@ assert(
 
 workflow_text = File.read(ARGV[1])
 assert(workflow_text.include?("SIGNING_REQUESTS_DEPLOY_KEY"), "缺少请求仓库 deploy key")
+assert(workflow_text.include?("APPROVED_IOS_HARDEN_REVISION"), "缺少批准的 ios-harden revision")
+assert(workflow_text.include?("shasum -a 256 -c"), "seed 注入前必须复核 signer 哈希")
+assert(!workflow_text.include?("ssh-keyscan"), "禁止运行时获取 SSH host key")
+assert(
+  workflow_text.include?("AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"),
+  "缺少 GitHub 官方 Ed25519 host key"
+)
+%w[bundle_identifier build_id manifest_sha256].each do |field|
+  assert(workflow_text.scan(field).length >= 3, "审批摘要未绑定 #{field}")
+end
+assert(workflow_text.include?("submitted_by"), "审计缺少 submitted_by")
+assert(workflow_text.include?("submitted_at_epoch_seconds"), "审计缺少提交时间")
 assert(workflow_text.include?("publish_response.sh"), "缺少响应发布步骤")
 assert(!workflow_text.include?("pull_request_target"), "禁止 pull_request_target")
 assert(!workflow_text.match?(/fallback|fixture-seed|old[_ -]?key/i), "生产工作流禁止回退密钥")

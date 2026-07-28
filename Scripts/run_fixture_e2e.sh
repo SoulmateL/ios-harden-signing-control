@@ -47,6 +47,7 @@ jq -cS \
     tr -d '\n' > "$fixture_request"
 submission="$(
     IOS_HARDEN_SIGNER="$signer" \
+        IOS_HARDEN_REVISION="1111111111111111111111111111111111111111" \
         "$working_repository/Scripts/submit_request.sh" \
         --request "$fixture_request" \
         --source-revision fixture-e2e
@@ -79,21 +80,44 @@ public_key_base64="$(jq -r '.public_key_base64' <<< "$public_key_json")"
     --public-key-base64 "$public_key_base64" > /dev/null
 
 audit_path="$output_directory/audit.json"
+summary_path="$request_directory/summary.json"
+signer_sha256="$(shasum -a 256 "$signer" | awk '{print $1}')"
 jq -cS -n \
+    --arg actor "$(jq -r '.submitted_by' "$summary_path")" \
+    --arg build_id "$(jq -r '.build_id' "$request_directory/request.json")" \
+    --arg bundle_identifier "$(jq -r '.bundle_identifier' "$request_directory/request.json")" \
+    --arg control_commit "$(git rev-parse HEAD)" \
+    --arg github_run_id "fixture-e2e" \
+    --arg ios_harden_revision "$(jq -r '.ios_harden_revision' "$summary_path")" \
     --arg key_id "$(jq -r '.key_id' "$response_path")" \
+    --arg manifest_sha256 "$(jq -r '.manifest_sha256' "$request_directory/request.json")" \
     --arg public_key_sha256 "$(jq -r '.public_key_sha256' "$response_path")" \
     --arg request_id "$request_id" \
     --arg request_sha256 "$request_sha256" \
+    --arg signer_sha256 "$signer_sha256" \
+    --arg source_revision "$(jq -r '.source_revision' "$summary_path")" \
+    --arg submitted_by "$(jq -r '.submitted_by' "$summary_path")" \
+    --argjson submitted_at_epoch_seconds "$(jq -r '.submitted_at_epoch_seconds' "$summary_path")" \
     --argjson signed_at_epoch_seconds "$(date +%s)" \
     '{
+        actor: $actor,
+        build_id: $build_id,
+        bundle_identifier: $bundle_identifier,
+        control_commit: $control_commit,
+        github_run_id: $github_run_id,
+        ios_harden_revision: $ios_harden_revision,
         key_id: $key_id,
+        manifest_sha256: $manifest_sha256,
         public_key_sha256: $public_key_sha256,
         request_id: $request_id,
         request_sha256: $request_sha256,
         schema_version: 1,
         signed_at_epoch_seconds: $signed_at_epoch_seconds,
-        source_revision: "fixture-e2e",
-        status: "signed"
+        signer_sha256: $signer_sha256,
+        source_revision: $source_revision,
+        status: "signed",
+        submitted_at_epoch_seconds: $submitted_at_epoch_seconds,
+        submitted_by: $submitted_by
     }' > "$audit_path"
 
 Scripts/publish_response.sh \

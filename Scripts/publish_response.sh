@@ -61,14 +61,49 @@ jq -e '
     exit 2
 }
 jq -e \
+    --arg key_id "$(jq -r '.key_id' "$response_path")" \
+    --arg public_key_sha256 "$(jq -r '.public_key_sha256' "$response_path")" \
     --arg request_id "$request_id" \
     --arg request_sha256 "$(jq -r '.request_sha256' "$response_path")" \
     '
-        type == "object" and
+        type == "object" and keys == [
+            "actor",
+            "build_id",
+            "bundle_identifier",
+            "control_commit",
+            "github_run_id",
+            "ios_harden_revision",
+            "key_id",
+            "manifest_sha256",
+            "public_key_sha256",
+            "request_id",
+            "request_sha256",
+            "schema_version",
+            "signed_at_epoch_seconds",
+            "signer_sha256",
+            "source_revision",
+            "status",
+            "submitted_at_epoch_seconds",
+            "submitted_by"
+        ] and
         .schema_version == 1 and
+        .key_id == $key_id and
+        .public_key_sha256 == $public_key_sha256 and
         .request_id == $request_id and
         .request_sha256 == $request_sha256 and
-        .status == "signed"
+        .status == "signed" and
+        (.actor | type == "string" and test("^[A-Za-z0-9-]{1,39}$")) and
+        (.submitted_by | type == "string" and test("^[A-Za-z0-9-]{1,39}$")) and
+        (.bundle_identifier | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9-]*(\\.[A-Za-z0-9][A-Za-z0-9-]*)+$")) and
+        (.build_id | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")) and
+        (.source_revision | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")) and
+        (.github_run_id | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")) and
+        (.control_commit | type == "string" and test("^[0-9a-f]{40}$")) and
+        (.ios_harden_revision | type == "string" and test("^[0-9a-f]{40}$")) and
+        (.manifest_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.signer_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.signed_at_epoch_seconds | type == "number" and . >= 0 and floor == .) and
+        (.submitted_at_epoch_seconds | type == "number" and . >= 0 and floor == .)
     ' \
     "$audit_path" > /dev/null || {
     echo "错误：审计记录与响应不匹配" >&2

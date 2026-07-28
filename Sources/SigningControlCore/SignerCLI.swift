@@ -127,6 +127,7 @@ public enum SignerCLI {
                 buildID: request.buildID,
                 bundleIdentifier: request.bundleIdentifier,
                 keyID: request.keyID,
+                manifestSHA256: request.manifestSHA256,
                 requestSHA256: data.sha256Hex,
                 status: "valid"
             )
@@ -252,6 +253,7 @@ private struct RequestValidationReceipt: Encodable {
     let buildID: String
     let bundleIdentifier: String
     let keyID: String
+    let manifestSHA256: String
     let requestSHA256: String
     let status: String
 
@@ -259,6 +261,7 @@ private struct RequestValidationReceipt: Encodable {
         case buildID = "build_id"
         case bundleIdentifier = "bundle_identifier"
         case keyID = "key_id"
+        case manifestSHA256 = "manifest_sha256"
         case requestSHA256 = "request_sha256"
         case status
     }

@@ -49,6 +49,27 @@ recovery_volume="$(
     Scripts/verify_encrypted_recovery_volume.sh --volume "$requested_volume"
 )"
 recovery_directory="$recovery_volume/ios-harden-signing-control-recovery"
+if [[ -L "$recovery_directory" ]]; then
+    echo "错误：恢复目录不得是符号链接" >&2
+    exit 2
+fi
+if [[ -e "$recovery_directory" && ! -d "$recovery_directory" ]]; then
+    echo "错误：恢复目录路径已被非目录占用" >&2
+    exit 2
+fi
+if [[ ! -e "$recovery_directory" ]]; then
+    mkdir "$recovery_directory"
+    chmod 700 "$recovery_directory"
+fi
+resolved_recovery_directory="$(realpath "$recovery_directory")"
+[[ "$resolved_recovery_directory" == "$recovery_directory" ]] || {
+    echo "错误：恢复目录必须直接位于已验证的加密卷" >&2
+    exit 2
+}
+[[ -w "$resolved_recovery_directory" ]] || {
+    echo "错误：恢复目录不可写" >&2
+    exit 2
+}
 recovery_path="$recovery_directory/$key_id.seed.b64"
 [[ ! -e "$recovery_path" && ! -L "$recovery_path" ]] || {
     echo "错误：恢复副本已存在，拒绝覆盖" >&2
@@ -111,10 +132,6 @@ gh secret set IOS_HARDEN_ED25519_SEED_B64 \
     --repo "$expected_repository" \
     < "$seed_base64_path"
 
-if [[ ! -d "$recovery_directory" ]]; then
-    mkdir "$recovery_directory"
-    chmod 700 "$recovery_directory"
-fi
 (
     set -o noclobber
     umask 077
@@ -158,6 +175,7 @@ chmod 644 "$receipt_temporary_path"
 mkdir -p Evidence/production-bootstrap
 mv "$receipt_temporary_path" \
     Evidence/production-bootstrap/public-receipt.json
+/usr/sbin/diskutil unmount "$recovery_volume" > /dev/null
 
 echo "生产 seed 初始化完成，但生产签名仍保持禁用。"
 echo "Key ID: $key_id"

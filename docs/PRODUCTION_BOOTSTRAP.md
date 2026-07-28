@@ -41,6 +41,31 @@ Scripts/bootstrap_production.sh \
 3. 通过 stdin 写入控制仓库 Secret；
 4. 在加密 U 盘写入唯一恢复副本；
 5. 生成公开的生产策略和公开收据。
+6. 同步并卸载加密恢复卷。
+
+## 审查并发布公开配置
+
+脚本不会替你提交公开生产配置。确认终端只显示新的 Key ID、公钥和公钥指纹后，
+审查并推送这两个不含 seed 的文件：
+
+```bash
+jq . Config/production-policy.json
+jq . Evidence/production-bootstrap/public-receipt.json
+git add Config/production-policy.json Evidence/production-bootstrap/public-receipt.json
+git diff --cached
+git commit -m "feat: publish production signing public key"
+git push origin main
+```
+
+然后把已审查的 `ios-harden` 完整 40 位 commit 写入公开变量：
+
+```bash
+gh variable set APPROVED_IOS_HARDEN_REVISION \
+  --body <40位小写commit> \
+  --repo SoulmateL/ios-harden-signing-control
+```
+
+没有完成上述推送和 revision 设置时，生产工作流必须失败关闭。
 
 ## 执行后仍不能上线
 
