@@ -6,7 +6,8 @@
 当前状态：
 
 - Swift/CryptoKit Ed25519 signer、严格请求协议和 Seatbelt 断网沙箱已实现；
-- 请求仓库不保存 Secret，并已关闭 Actions；
+- 控制仓库公开，仅包含可审查的代码、工作流和公开策略；生产 seed 与部署私钥只保存在 GitHub Secret；
+- 请求仓库保持私有、不保存 Secret，并已关闭 Actions；
 - 生产工作流只允许 `SoulmateL` 手动触发；
 - `PRODUCTION_READY=false`，没有生成生产 seed；
 - 仓库只包含明确标注的公开 fixture seed，用于自动测试。
@@ -21,8 +22,9 @@
 4. 输入 request ID 和 request SHA-256，手动运行；
 5. 回到请求仓库查看并验签 `response.json`。
 
-如果所有者未批准、GitHub 免费额度不足、请求被改动、响应已存在或任何检查失败，
-流程都会停止，不会回退到旧 Mac 密钥。
+如果所有者未批准、GitHub runner 不可用、请求被改动、响应已存在或任何检查失败，
+流程都会停止，不会回退到旧 Mac 密钥。控制仓库公开不等于 seed 公开：公开读者
+无法读取 GitHub Secret，也没有触发生产签名的权限。
 
 请求仓库是传输通道，不是不可篡改账本。个人免费私有仓库不能依赖 branch
 protection 阻止成员重写 Git 历史，因此 `audit.json` 只作辅助排查；真正的信任依据

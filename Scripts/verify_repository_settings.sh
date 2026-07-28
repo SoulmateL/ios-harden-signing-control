@@ -17,7 +17,20 @@ verify_private_owner_repository() {
     }
 }
 
-verify_private_owner_repository "$control_repository"
+verify_public_owner_repository() {
+    local repository="$1"
+    gh api "repos/$repository" |
+        jq -e '
+            .private == false and
+            .visibility == "public" and
+            .owner.login == "SoulmateL"
+        ' > /dev/null || {
+        echo "错误：$repository 必须是 SoulmateL 的公开仓库" >&2
+        exit 1
+    }
+}
+
+verify_public_owner_repository "$control_repository"
 verify_private_owner_repository "$requests_repository"
 
 gh api "repos/$requests_repository/actions/permissions" |

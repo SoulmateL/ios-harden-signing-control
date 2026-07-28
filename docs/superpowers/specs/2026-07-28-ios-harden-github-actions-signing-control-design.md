@@ -18,8 +18,10 @@
 
 ## 2. 已确认事实
 
-- GitHub 控制仓库是私有仓库
-  `SoulmateL/ios-harden-signing-control`。
+- GitHub 控制仓库是公开仓库
+  `SoulmateL/ios-harden-signing-control`，以使用免费的标准 GitHub 托管 runner。
+  它只公开可审查的代码、工作流、公开策略和 fixture；生产 seed 与部署私钥仅保存在
+  GitHub Secret。
 - 团队请求使用独立私有仓库
   `SoulmateL/ios-harden-signing-requests`。
 - 两个仓库都属于个人 GitHub 账号 `SoulmateL`，不连接、不修改、不依赖任何
@@ -45,14 +47,14 @@
 
 ## 4. 总体架构
 
-系统使用两个 GitHub 私有仓库：
+系统使用两个 GitHub 仓库：一个公开控制仓库和一个私有请求仓库。
 
 1. `ios-harden-signing-requests`
    - 团队成员可以提交请求和读取签名结果。
    - 只保存严格 JSON 请求、响应和非秘密审计元数据。
    - 不保存 GitHub Actions seed，不运行持有生产秘密的工作流。
 2. `ios-harden-signing-control`
-   - 只有 `SoulmateL` 拥有访问和写入权限。
+   - 公开读取；只有 `SoulmateL` 拥有写入和 Actions 手动触发权限。
    - 保存经过审查的签名工作流、策略、公钥和工具版本锁定信息。
    - 使用 GitHub Actions Secret 保存生产 seed。
    - 使用专用部署密钥读写请求仓库。
@@ -74,7 +76,7 @@
 
 ## 5. 权限模型
 
-- 控制仓库保持所有者专用，不添加协作者。
+- 控制仓库公开读取、不添加协作者，只有所有者 `SoulmateL` 可写入或手动触发工作流。
 - 请求仓库成员权限决定谁能提交请求。
 - 从请求仓库移除成员后，该成员不能推送新请求。
 - 签名工作流只能由控制仓库所有者手动触发。
@@ -109,8 +111,9 @@
 
 ## 7. Actions 签名执行
 
-签名任务使用 GitHub 托管 macOS runner 和系统 CryptoKit。macOS 分钟按 GitHub
-规则计入免费额度；额度不足时停止，不启用付费超额。
+签名任务使用公开控制仓库中的标准 GitHub 托管 macOS runner 和系统 CryptoKit。
+公开仓库的标准 runner 按 GitHub 规则免费；不得切换到收费的大型 runner。任何
+runner 不可用或审批检查失败时停止，不启用付费超额。
 
 控制仓库提供一个无第三方依赖的短生命周期 signer：
 
