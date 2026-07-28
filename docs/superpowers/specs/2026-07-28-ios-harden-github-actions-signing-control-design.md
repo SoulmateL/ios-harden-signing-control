@@ -109,24 +109,25 @@
 
 ## 7. Actions 签名执行
 
-签名任务使用 GitHub 托管 Linux runner，避免 macOS 分钟倍率并降低免费额度消耗。
+签名任务使用 GitHub 托管 macOS runner 和系统 CryptoKit。macOS 分钟按 GitHub
+规则计入免费额度；额度不足时停止，不启用付费超额。
 
-现有 `ios-harden-signer` 需要拆分出跨平台签名核心：
+控制仓库提供一个无第三方依赖的短生命周期 signer：
 
-- 保留现有 macOS Keychain provider，不改变其本地行为。
-- 新增仅供 GitHub Actions 使用的短生命周期 provider。
+- 不修改现有 macOS Keychain signer，也不读取任何本机钥匙串。
 - seed 只通过标准输入传入，不接受命令参数、文件路径或普通环境输出。
 - 使用与 ios-harden 相同的请求规范化和 Ed25519 响应协议。
 - 策略、公钥指纹、Bundle ID 和工具 revision 继续失败关闭。
-- Linux 加密依赖固定到经过审查的精确 revision，并提交解析锁文件。
+- 使用系统 CryptoKit，避免引入新的密码学包和跨平台兼容层。
 
 持有 seed 的签名步骤必须满足：
 
 - 只调用已验证 SHA-256 的 signer 制品。
-- signer 在无网络容器中运行，容器文件系统只读，仅挂载请求和响应临时目录。
+- signer 在 Seatbelt 沙箱中运行，默认拒绝并显式禁止网络，只允许读取签名器、策略和
+  请求，只允许写入响应临时目录。
 - 关闭 shell 跟踪和 core dump。
 - 不在 seed 注入后运行第三方 Action、构建脚本或包管理器。
-- 响应产生后立即结束隔离容器；临时 runner 随任务销毁。
+- 响应产生后立即结束沙箱进程；临时 runner 随任务销毁。
 
 ## 8. Secret 与恢复
 
@@ -202,7 +203,7 @@
 - 响应可由 ios-harden 和 RuntimeGuard 使用新公钥验证。
 - `2026-01` 与 `2026-02` 均返回 revoked key。
 - Actions 日志、制品、缓存和 Git 历史不包含测试 seed 的 Base64 或原始字节。
-- 签名容器无网络且文件系统只读。
+- 签名 Seatbelt 沙箱无网络且仅允许必要文件访问。
 - 请求仓库部署密钥不能访问其他仓库。
 - 免费额度或依赖不可用时没有旧密钥回退。
 
@@ -210,7 +211,7 @@
 
 1. 在控制仓库实现请求校验、fixture signer、审计和测试。
 2. 创建请求仓库并配置专用部署密钥。
-3. 扩展 `ios-harden-signer` 的跨平台短生命周期 provider。
+3. 在控制仓库实现无第三方依赖的短生命周期 CryptoKit signer。
 4. 使用 fixture key 完成双仓库端到端测试。
 5. 提供独立的本地上传和响应读取工具，不修改任何公司仓库。
 6. 完成旧 Key ID 撤销和新公钥的 App 过渡版本验证。
