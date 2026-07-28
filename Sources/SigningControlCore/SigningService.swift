@@ -59,6 +59,47 @@ public struct SigningService: Sendable {
         }
     }
 
+    public func verify(
+        requestData: Data,
+        responseData: Data,
+        publicKeyBase64: String
+    ) throws -> IntegritySignatureResponse {
+        let request = try IntegritySigningRequest.decode(requestData)
+        guard try request.canonicalData() == requestData else {
+            throw SigningControlError.invalidJSON
+        }
+        let response = try IntegritySignatureResponse.decode(responseData)
+        guard try response.canonicalData() == responseData else {
+            throw SigningControlError.invalidJSON
+        }
+        guard
+            let publicKeyData = Data(base64Encoded: publicKeyBase64),
+            publicKeyData.count == 32,
+            publicKeyData.base64EncodedString() == publicKeyBase64,
+            let signature = Data(base64Encoded: response.signatureBase64)
+        else {
+            throw SigningControlError.policyRejected
+        }
+
+        let publicKey: Curve25519.Signing.PublicKey
+        do {
+            publicKey = try Curve25519.Signing.PublicKey(
+                rawRepresentation: publicKeyData
+            )
+        } catch {
+            throw SigningControlError.policyRejected
+        }
+        guard
+            response.keyID == request.keyID,
+            response.requestSHA256 == requestData.sha256Hex,
+            response.publicKeySHA256 == publicKeyData.sha256Hex,
+            publicKey.isValidSignature(signature, for: requestData)
+        else {
+            throw SigningControlError.policyRejected
+        }
+        return response
+    }
+
     private func validate(
         request: IntegritySigningRequest,
         policy: PublicSigningPolicy,

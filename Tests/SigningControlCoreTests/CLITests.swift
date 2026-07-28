@@ -158,6 +158,54 @@ final class CLITests: XCTestCase {
         XCTAssertFalse(text.contains(seed.base64EncodedString()))
     }
 
+    func testVerifyResponseUsesPublicKeyAndRejectsTampering() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let request = directory.appendingPathComponent("request.json")
+        let response = directory.appendingPathComponent("response.json")
+        let requestData = try makeRequestData()
+        let signed = try SigningService().sign(
+            requestData: requestData,
+            policyData: try makePolicyData(),
+            privateKeyInput: seed,
+            now: Date()
+        )
+        try requestData.write(to: request)
+        try signed.canonicalData().write(to: response)
+
+        let result = SignerCLI.run(
+            arguments: [
+                "verify-response",
+                "--request", request.path,
+                "--response", response.path,
+                "--public-key-base64", "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw="
+            ],
+            standardInput: Data()
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.standardError, Data())
+        XCTAssertEqual(
+            String(decoding: result.standardOutput, as: UTF8.self),
+            #"{"key_id":"skb-integrity-fixture","public_key_sha256":"fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889","request_sha256":"\#(requestData.sha256Hex)","status":"verified"}"#
+                + "\n"
+        )
+
+        var tampered = requestData
+        tampered[tampered.startIndex] = 0x20
+        try tampered.write(to: request)
+        let rejected = SignerCLI.run(
+            arguments: [
+                "verify-response",
+                "--request", request.path,
+                "--response", response.path,
+                "--public-key-base64", "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw="
+            ],
+            standardInput: Data()
+        )
+        XCTAssertNotEqual(rejected.exitCode, 0)
+    }
+
     private func preparedDirectory() throws -> URL {
         let directory = try temporaryDirectory()
         try makeRequestData().write(to: directory.appendingPathComponent("request.json"))

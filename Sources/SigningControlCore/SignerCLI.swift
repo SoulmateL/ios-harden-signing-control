@@ -36,6 +36,19 @@ public enum SignerCLI {
         ] {
             return derivePublicKey(standardInput: standardInput)
         }
+        if
+            arguments.count == 7,
+            arguments[0] == "verify-response",
+            arguments[1] == "--request",
+            arguments[3] == "--response",
+            arguments[5] == "--public-key-base64"
+        {
+            return verifyResponse(
+                requestPath: arguments[2],
+                responsePath: arguments[4],
+                publicKeyBase64: arguments[6]
+            )
+        }
         guard
             arguments.count == 8,
             arguments[0] == "sign",
@@ -156,6 +169,45 @@ public enum SignerCLI {
             return failure(error)
         } catch {
             return failure(.invalidPrivateKey)
+        }
+    }
+
+    private static func verifyResponse(
+        requestPath: String,
+        responsePath: String,
+        publicKeyBase64: String
+    ) -> SignerCLIResult {
+        guard
+            let requestURL = absoluteFileURL(requestPath),
+            let responseURL = absoluteFileURL(responsePath)
+        else {
+            return failure(.invalidFile)
+        }
+        do {
+            let requestData = try SecureFiles.readRegularFile(at: requestURL)
+            let responseData = try SecureFiles.readRegularFile(at: responseURL)
+            let verified = try SigningService().verify(
+                requestData: requestData,
+                responseData: responseData,
+                publicKeyBase64: publicKeyBase64
+            )
+            let receipt = SigningReceipt(
+                keyID: verified.keyID,
+                publicKeySHA256: verified.publicKeySHA256,
+                requestSHA256: verified.requestSHA256,
+                status: "verified"
+            )
+            var output = try StrictJSON.encode(receipt)
+            output.append(0x0A)
+            return SignerCLIResult(
+                exitCode: 0,
+                standardOutput: output,
+                standardError: Data()
+            )
+        } catch let error as SigningControlError {
+            return failure(error)
+        } catch {
+            return failure(.policyRejected)
         }
     }
 

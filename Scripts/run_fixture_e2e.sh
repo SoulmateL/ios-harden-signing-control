@@ -1,0 +1,151 @@
+#!/bin/bash
+set -euo pipefail
+set +x
+ulimit -c 0
+
+[[ $# -eq 2 && "$1" == "--requests-repo" ]] || {
+    echo "用法：run_fixture_e2e.sh --requests-repo /路径/ios-harden-signing-requests" >&2
+    exit 2
+}
+
+repository_root="$(cd "$(dirname "$0")/.." && pwd -P)"
+requests_repository="$(cd "$2" && pwd -P)"
+[[ -d "$requests_repository/.git" ]] || {
+    echo "错误：请求仓库路径无效" >&2
+    exit 2
+}
+[[ ! -d "$requests_repository/.github/workflows" ]] || {
+    echo "错误：请求仓库不得包含 Actions 工作流" >&2
+    exit 2
+}
+
+cd "$repository_root"
+swift build
+signer="$repository_root/.build/debug/ios-harden-actions-signer"
+fixture_seed="$repository_root/Fixtures/fixture-seed.b64"
+fixture_policy="$repository_root/Config/fixture-policy.json"
+
+request_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+[[ "$request_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+run_root="$repository_root/.build/fixture-e2e/$request_id"
+mkdir -p "$run_root"
+bare_repository="$run_root/transport.git"
+working_repository="$run_root/requests-work"
+verification_repository="$run_root/requests-verify"
+
+git clone --bare "$requests_repository" "$bare_repository"
+git clone "$bare_repository" "$working_repository"
+git -C "$working_repository" config user.name "ios-harden-fixture"
+git -C "$working_repository" config user.email "fixture@example.invalid"
+
+request_directory="$working_repository/requests/$request_id"
+mkdir "$request_directory"
+current_epoch="$(date +%s)"
+jq -cS \
+    --argjson current_epoch "$current_epoch" \
+    '.created_at_epoch_seconds = $current_epoch' \
+    Fixtures/request.json |
+    tr -d '\n' > "$request_directory/request.json"
+validation="$(
+    "$signer" validate-request \
+        --request "$request_directory/request.json"
+)"
+request_sha256="$(jq -r '.request_sha256' <<< "$validation")"
+jq -cS -n \
+    --arg bundle_identifier "$(jq -r '.bundle_identifier' <<< "$validation")" \
+    --arg build_id "$(jq -r '.build_id' <<< "$validation")" \
+    --arg key_id "$(jq -r '.key_id' <<< "$validation")" \
+    --arg request_id "$request_id" \
+    --arg request_sha256 "$request_sha256" \
+    '{
+        build_id: $build_id,
+        bundle_identifier: $bundle_identifier,
+        key_id: $key_id,
+        request_id: $request_id,
+        request_sha256: $request_sha256,
+        source_revision: "fixture-e2e"
+    }' > "$request_directory/summary.json"
+git -C "$working_repository" add "requests/$request_id"
+git -C "$working_repository" commit -m "request: fixture $request_id"
+git -C "$working_repository" push origin HEAD:main
+
+output_directory="$run_root/output"
+mkdir "$output_directory"
+response_path="$output_directory/response.json"
+tr -d '\n' < "$fixture_seed" |
+    env \
+        POLICY_PATH="$fixture_policy" \
+        REQUEST_PATH="$request_directory/request.json" \
+        RESPONSE_PATH="$response_path" \
+        SIGNER_PATH="$signer" \
+        "$repository_root/Scripts/run_signer_sandboxed.sh" > /dev/null
+
+public_key_json="$(
+    tr -d '\n' < "$fixture_seed" |
+        "$signer" derive-public-key --private-key-stdin --format json
+)"
+public_key_base64="$(jq -r '.public_key_base64' <<< "$public_key_json")"
+"$signer" verify-response \
+    --request "$request_directory/request.json" \
+    --response "$response_path" \
+    --public-key-base64 "$public_key_base64" > /dev/null
+
+audit_path="$output_directory/audit.json"
+jq -cS -n \
+    --arg key_id "$(jq -r '.key_id' "$response_path")" \
+    --arg public_key_sha256 "$(jq -r '.public_key_sha256' "$response_path")" \
+    --arg request_id "$request_id" \
+    --arg request_sha256 "$request_sha256" \
+    --argjson signed_at_epoch_seconds "$(date +%s)" \
+    '{
+        key_id: $key_id,
+        public_key_sha256: $public_key_sha256,
+        request_id: $request_id,
+        request_sha256: $request_sha256,
+        schema_version: 1,
+        signed_at_epoch_seconds: $signed_at_epoch_seconds,
+        source_revision: "fixture-e2e",
+        status: "signed"
+    }' > "$audit_path"
+
+Scripts/publish_response.sh \
+    --requests-repo "$working_repository" \
+    --request-id "$request_id" \
+    --response "$response_path" \
+    --audit "$audit_path" > /dev/null
+
+git clone "$bare_repository" "$verification_repository"
+published_request="$verification_repository/requests/$request_id/request.json"
+published_response="$verification_repository/responses/$request_id/response.json"
+"$signer" verify-response \
+    --request "$published_request" \
+    --response "$published_response" \
+    --public-key-base64 "$public_key_base64" > /dev/null
+
+response_sha256="$(
+    shasum -a 256 "$published_response" |
+        awk '{print $1}'
+)"
+receipt_temporary="$run_root/last-run.json"
+jq -cS -n \
+    --arg key_id "skb-integrity-fixture" \
+    --arg public_key_sha256 "$(jq -r '.public_key_sha256' <<< "$public_key_json")" \
+    --arg request_id "$request_id" \
+    --arg request_sha256 "$request_sha256" \
+    --arg response_sha256 "$response_sha256" \
+    --argjson verified_at_epoch_seconds "$(date +%s)" \
+    '{
+        key_id: $key_id,
+        production_secret_used: false,
+        public_key_sha256: $public_key_sha256,
+        request_id: $request_id,
+        request_sha256: $request_sha256,
+        response_sha256: $response_sha256,
+        schema_version: 1,
+        signature_verified: true,
+        verified_at_epoch_seconds: $verified_at_epoch_seconds
+    }' > "$receipt_temporary"
+mv "$receipt_temporary" Evidence/fixture-e2e/last-run.json
+
+echo "fixture 端到端验证通过"
+echo "证据：$repository_root/Evidence/fixture-e2e/last-run.json"
