@@ -109,6 +109,12 @@ assert(
   "CI 必须通过受审安装脚本取得 age"
 )
 assert(
+  ci_steps.fetch(age_install_index).fetch("env", {}) == {
+    "GH_TOKEN" => "${{ github.token }}"
+  },
+  "固定 age 下载必须使用当前工作流令牌，避免共享 IP API 限流"
+)
+assert(
   ci_steps.fetch(roundtrip_index).fetch("run", "").include?("recovery_roundtrip_test.sh"),
   "CI 必须执行恢复密文往返测试"
 )

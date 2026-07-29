@@ -20,6 +20,8 @@ jobs:
         run: bash Tests/age_tool_contract_test.sh
 
       - name: Install pinned age
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: Scripts/install_pinned_age.sh --destination "$RUNNER_TEMP/age-v1.3.1"
 
       - name: Test encrypted recovery round trip
