@@ -16,6 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
+      - name: Install pinned age
+        run: Scripts/install_pinned_age.sh --destination "$RUNNER_TEMP/age-v1.3.1"
+
+      - name: Test encrypted recovery round trip
+        run: bash Tests/recovery_roundtrip_test.sh --age "$RUNNER_TEMP/age-v1.3.1/age"
+
       - name: Test Swift package
         run: swift test
 

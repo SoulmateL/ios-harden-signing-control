@@ -96,5 +96,20 @@ assert(ci_text.include?("bootstrap_contract_test.sh"), "CI 必须检查生产 bo
 assert(ci_text.include?("fixture_e2e_contract_test.sh"), "CI 必须检查 fixture 端到端契约")
 assert(ci_text.include?("validate_repository.sh"), "CI 必须扫描仓库")
 
+ci_steps = ci.fetch("jobs").values.first.fetch("steps")
+age_install_index = ci_steps.index { |step| step["name"] == "Install pinned age" }
+roundtrip_index = ci_steps.index { |step| step["name"] == "Test encrypted recovery round trip" }
+assert(!age_install_index.nil?, "CI 缺少固定 age 安装步骤")
+assert(!roundtrip_index.nil?, "CI 缺少加密恢复往返测试")
+assert(age_install_index < roundtrip_index, "CI 必须先安装固定 age，再测试恢复密文")
+assert(
+  ci_steps.fetch(age_install_index).fetch("run", "").include?("install_pinned_age.sh"),
+  "CI 必须通过受审安装脚本取得 age"
+)
+assert(
+  ci_steps.fetch(roundtrip_index).fetch("run", "").include?("recovery_roundtrip_test.sh"),
+  "CI 必须执行恢复密文往返测试"
+)
+
 puts "GitHub Actions 工作流契约检查通过"
 RUBY
