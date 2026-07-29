@@ -8,7 +8,8 @@
 - Swift/CryptoKit Ed25519 signer、严格请求协议和 Seatbelt 断网沙箱已实现；
 - 控制仓库公开，仅包含可审查的代码、工作流和公开策略；生产 seed 与部署私钥只保存在 GitHub Secret；
 - 控制仓库强制 Action 固定 SHA，并启用 GitHub Secret 扫描和 push protection；
-- 请求仓库保持私有、不保存 Secret，并已关闭 Actions；
+- 请求仓库保持私有、不保存 Secret，并已关闭 Actions；它只允许保存无法直接签名的
+  `.age` 加密恢复副本；
 - 生产工作流只允许 `SoulmateL` 手动触发；
 - `PRODUCTION_READY=false`，没有生成生产 seed；
 - 仓库只包含明确标注的公开 fixture seed，用于自动测试。
@@ -44,9 +45,12 @@ bash Scripts/run_fixture_e2e.sh \
 ## 生产门禁
 
 生产初始化说明见
-[生产密钥人工初始化](docs/PRODUCTION_BOOTSTRAP.md)。初始化完成后仍需先让 App 信任
-新公钥，并同时撤销旧 Key ID `skb-integrity-prod-2026-01` 和
+[生产密钥人工初始化](docs/PRODUCTION_BOOTSTRAP.md)。恢复密码只保存在所有者的
+iPhone“密码”App；私有请求仓库只保存经过 `age` 认证加密的密文。初始化完成后仍需
+先让 App 信任新公钥，并同时撤销旧 Key ID `skb-integrity-prod-2026-01` 和
 `skb-integrity-prod-2026-02`。在这些外部工作完成前，不得启用生产签名。
 
-完整设计见
-[GitHub Actions 中央签名控制设计](docs/superpowers/specs/2026-07-28-ios-harden-github-actions-signing-control-design.md)。
+完整设计见：
+
+- [GitHub Actions 中央签名控制设计](docs/superpowers/specs/2026-07-28-ios-harden-github-actions-signing-control-design.md)
+- [私有仓库加密恢复设计](docs/superpowers/specs/2026-07-29-encrypted-repository-recovery-design.md)

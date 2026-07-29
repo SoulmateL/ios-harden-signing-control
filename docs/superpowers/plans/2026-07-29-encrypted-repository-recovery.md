@@ -13,8 +13,8 @@ to `SoulmateL/ios-harden-signing-requests`, then writes the seed to the control 
 An owner-only restore script decrypts a named recovery file and pipes the validated seed to the
 same Secret. The public control repository contains no recovery ciphertext or production secret.
 
-**Tech Stack:** Bash 3-compatible shell scripts, macOS `/usr/bin/curl`, `/usr/bin/tar`,
-`/usr/bin/shasum`, GitHub CLI, `age v1.3.1`, Swift/CryptoKit signer, jq, GitHub Actions on
+**Tech Stack:** Bash 3-compatible shell scripts, macOS `/usr/bin/tar`, `/usr/bin/shasum`,
+GitHub CLI, `age v1.3.1`, Swift/CryptoKit signer, jq, GitHub Actions on
 `macos-15`.
 
 ---
@@ -74,7 +74,7 @@ Private request repository:
 - [ ] **Step 1: Write the failing contract test**
 
 Add assertions that the two scripts exist and are Bash-syntax-valid, contain `v1.3.1`, the
-official release URL, both Darwin archive SHA-256 values, both executable SHA-256 values, reject
+official release repository, both Darwin archive SHA-256 values, both executable SHA-256 values, reject
 unknown architectures, reject symlink destinations, and never accept a password argument or
 environment variable. The test must fail immediately because the scripts do not exist.
 
@@ -103,8 +103,7 @@ Expected: FAIL because both scripts are absent.
 
 `install_pinned_age.sh` accepts exactly `--destination /absolute/path`. It maps `arm64` and
 `x86_64` to the two fixed Darwin archive names and checksums, rejects a symlink or non-directory
-destination, downloads only from
-`https://github.com/FiloSottile/age/releases/download/v1.3.1/`, verifies the archive with
+destination, downloads only through `gh release download v1.3.1 --repo FiloSottile/age`, verifies the archive with
 `/usr/bin/shasum -a 256 -c -`, extracts only `age/age`, verifies the executable checksum, installs
 mode `0555`, and prints the installed path. It must not accept any passphrase or seed input.
 
