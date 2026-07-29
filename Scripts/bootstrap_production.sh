@@ -7,17 +7,19 @@ ulimit -c 0
     echo "错误：生产 bootstrap 必须由所有者在交互终端现场执行" >&2
     exit 2
 }
-[[ $# -eq 6 &&
-    "$1" == "--recovery-volume" &&
+[[ $# -eq 8 &&
+    "$1" == "--requests-repo" &&
     "$3" == "--bundle-identifier" &&
-    "$5" == "--signer" ]] || {
-    echo "用法：bootstrap_production.sh --recovery-volume /Volumes/加密卷 --bundle-identifier com.example.App --signer /绝对路径/ios-harden-actions-signer" >&2
+    "$5" == "--signer" &&
+    "$7" == "--age" ]] || {
+    echo "用法：bootstrap_production.sh --requests-repo /绝对路径/ios-harden-signing-requests --bundle-identifier com.example.App --signer /绝对路径/ios-harden-actions-signer --age /绝对路径/age" >&2
     exit 2
 }
 
-requested_volume="$2"
+requested_recovery_repository="$2"
 bundle_identifier="$4"
 signer_path="$6"
+requested_age_path="$8"
 key_id="skb-integrity-prod-2026-03"
 expected_repository="SoulmateL/ios-harden-signing-control"
 
@@ -33,6 +35,9 @@ signer_path="$(realpath "$signer_path")"
 
 repository_root="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$repository_root"
+age_path="$(
+    Scripts/verify_pinned_age.sh --age "$requested_age_path"
+)"
 actual_repository="$(
     gh repo view --json nameWithOwner --jq '.nameWithOwner'
 )"
@@ -46,32 +51,12 @@ Scripts/verify_repository_settings.sh
     exit 2
 }
 
-recovery_volume="$(
-    Scripts/verify_encrypted_recovery_volume.sh --volume "$requested_volume"
+recovery_repository="$(
+    Scripts/verify_recovery_repository.sh \
+        --repository "$requested_recovery_repository"
 )"
-recovery_directory="$recovery_volume/ios-harden-signing-control-recovery"
-if [[ -L "$recovery_directory" ]]; then
-    echo "错误：恢复目录不得是符号链接" >&2
-    exit 2
-fi
-if [[ -e "$recovery_directory" && ! -d "$recovery_directory" ]]; then
-    echo "错误：恢复目录路径已被非目录占用" >&2
-    exit 2
-fi
-if [[ ! -e "$recovery_directory" ]]; then
-    mkdir "$recovery_directory"
-    chmod 700 "$recovery_directory"
-fi
-resolved_recovery_directory="$(realpath "$recovery_directory")"
-[[ "$resolved_recovery_directory" == "$recovery_directory" ]] || {
-    echo "错误：恢复目录必须直接位于已验证的加密卷" >&2
-    exit 2
-}
-[[ -w "$resolved_recovery_directory" ]] || {
-    echo "错误：恢复目录不可写" >&2
-    exit 2
-}
-recovery_path="$recovery_directory/$key_id.seed.b64"
+recovery_relative_path="Recovery/$key_id.age"
+recovery_path="$recovery_repository/$recovery_relative_path"
 [[ ! -e "$recovery_path" && ! -L "$recovery_path" ]] || {
     echo "错误：恢复副本已存在，拒绝覆盖" >&2
     exit 2
@@ -94,6 +79,8 @@ seed_base64_path="$temporary_directory/seed.b64"
 public_receipt_path="$temporary_directory/public-key.json"
 policy_temporary_path="$temporary_directory/production-policy.json"
 receipt_temporary_path="$temporary_directory/public-receipt.json"
+encrypted_temporary_path="$temporary_directory/$key_id.age"
+roundtrip_path="$temporary_directory/roundtrip.b64"
 cleanup() {
     exit_status=$?
     for temporary_file in \
@@ -101,7 +88,9 @@ cleanup() {
         "$seed_base64_path" \
         "$public_receipt_path" \
         "$policy_temporary_path" \
-        "$receipt_temporary_path"; do
+        "$receipt_temporary_path" \
+        "$encrypted_temporary_path" \
+        "$roundtrip_path"; do
         if [[ -e "$temporary_file" ]]; then
             /bin/rm "$temporary_file"
         fi
@@ -129,17 +118,33 @@ public_key_sha256="$(jq -r '.public_key_sha256' "$public_receipt_path")"
     exit 2
 }
 
-gh secret set IOS_HARDEN_ED25519_SEED_B64 \
-    --repo "$expected_repository" \
-    < "$seed_base64_path"
+"$age_path" \
+    --encrypt \
+    --passphrase \
+    --output "$encrypted_temporary_path" \
+    "$seed_base64_path"
+chmod 600 "$encrypted_temporary_path"
+"$age_path" \
+    --decrypt \
+    --output "$roundtrip_path" \
+    "$encrypted_temporary_path"
+chmod 600 "$roundtrip_path"
+cmp "$seed_base64_path" "$roundtrip_path"
 
 (
     set -o noclobber
     umask 077
-    cat "$seed_base64_path" > "$recovery_path"
+    cat "$encrypted_temporary_path" > "$recovery_path"
 )
 chmod 600 "$recovery_path"
-sync "$recovery_path"
+git -C "$recovery_repository" add "$recovery_relative_path"
+git -C "$recovery_repository" commit \
+    -m "recovery: add encrypted production copy"
+git -C "$recovery_repository" push origin main
+
+gh secret set IOS_HARDEN_ED25519_SEED_B64 \
+    --repo "$expected_repository" \
+    < "$seed_base64_path"
 
 jq -n \
     --arg bundle_identifier "$bundle_identifier" \
@@ -176,7 +181,6 @@ chmod 644 "$receipt_temporary_path"
 mkdir -p Evidence/production-bootstrap
 mv "$receipt_temporary_path" \
     Evidence/production-bootstrap/public-receipt.json
-/usr/sbin/diskutil unmount "$recovery_volume" > /dev/null
 
 echo "生产 seed 初始化完成，但生产签名仍保持禁用。"
 echo "Key ID: $key_id"

@@ -3,29 +3,38 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "$0")/.." && pwd -P)"
 bootstrap="$repository_root/Scripts/bootstrap_production.sh"
-volume_verifier="$repository_root/Scripts/verify_encrypted_recovery_volume.sh"
+recovery_verifier="$repository_root/Scripts/verify_recovery_repository.sh"
+age_verifier="$repository_root/Scripts/verify_pinned_age.sh"
 settings_verifier="$repository_root/Scripts/verify_repository_settings.sh"
 guide="$repository_root/docs/PRODUCTION_BOOTSTRAP.md"
 
 test -f "$bootstrap"
-test -f "$volume_verifier"
+test -f "$recovery_verifier"
+test -f "$age_verifier"
 test -f "$settings_verifier"
 test -f "$guide"
 bash -n "$bootstrap"
-bash -n "$volume_verifier"
+bash -n "$recovery_verifier"
+bash -n "$age_verifier"
 
 grep -Fq 'SoulmateL/ios-harden-signing-control' "$bootstrap"
+grep -Fq 'SoulmateL/ios-harden-signing-requests' "$recovery_verifier"
 grep -Fq 'skb-integrity-prod-2026-03' "$bootstrap"
 grep -Fq '[[ -t 0 && -t 1 ]]' "$bootstrap"
+grep -Fq -- '--requests-repo' "$bootstrap"
+grep -Fq -- '--age' "$bootstrap"
 grep -Fq '/usr/bin/openssl rand 32' "$bootstrap"
 grep -Fq 'derive-public-key' "$bootstrap"
 grep -Fq 'gh secret set IOS_HARDEN_ED25519_SEED_B64' "$bootstrap"
 grep -Fq 'Config/production-policy.json' "$bootstrap"
 grep -Fq 'PRODUCTION_READY --body false' "$bootstrap"
-grep -Fq 'verify_encrypted_recovery_volume.sh' "$bootstrap"
-grep -Fq '[[ -L "$recovery_directory" ]]' "$bootstrap"
-grep -Fq 'realpath "$recovery_directory"' "$bootstrap"
-grep -Fq 'diskutil unmount "$recovery_volume"' "$bootstrap"
+grep -Fq 'verify_recovery_repository.sh' "$bootstrap"
+grep -Fq 'verify_pinned_age.sh' "$bootstrap"
+grep -Fq -- '--encrypt' "$bootstrap"
+grep -Fq -- '--passphrase' "$bootstrap"
+grep -Fq -- '--decrypt' "$bootstrap"
+grep -Fq 'cmp "$seed_base64_path" "$roundtrip_path"' "$bootstrap"
+grep -Fq 'git -C "$recovery_repository" push origin main' "$bootstrap"
 grep -Fq 'Scripts/verify_repository_settings.sh' "$bootstrap" || {
     echo "错误：bootstrap 必须在生成 seed 前检查 GitHub 仓库安全设置" >&2
     exit 1
@@ -54,18 +63,34 @@ grep -Fq '.security_and_analysis.secret_scanning_push_protection.status == "enab
     exit 1
 }
 
-grep -Fq 'diskutil info -plist' "$volume_verifier"
-grep -Fq 'plutil' "$volume_verifier"
-grep -Fq 'RemovableMedia' "$volume_verifier"
-grep -Fq 'FilesystemType' "$volume_verifier"
-grep -Fq 'Encryption' "$volume_verifier"
+grep -Fq 'git -C "$recovery_repository" pull --ff-only' "$recovery_verifier"
+grep -Fq 'git -C "$recovery_repository" status --porcelain' "$recovery_verifier"
+grep -Fq 'git -C "$recovery_repository" branch --show-current' "$recovery_verifier"
+grep -Fq 'Recovery' "$recovery_verifier"
+grep -Fq '[[ -L "$requested_repository" ]]' "$recovery_verifier"
 grep -Fq '付费超额' "$guide"
 grep -Fq '预算为 0' "$guide"
 grep -Fq 'git add Config/production-policy.json' "$guide"
 grep -Fq 'git push origin main' "$guide"
 grep -Fq 'APPROVED_IOS_HARDEN_REVISION' "$guide"
-if grep -Fq 'plist_value Mounted' "$volume_verifier"; then
-    echo "错误：不得依赖并非所有 APFS 卷都有的 Mounted 字段" >&2
+
+recovery_push_line="$(
+    grep -n -F 'git -C "$recovery_repository" push origin main' "$bootstrap" |
+        cut -d: -f1
+)"
+secret_line="$(
+    grep -n -F 'gh secret set IOS_HARDEN_ED25519_SEED_B64' "$bootstrap" |
+        cut -d: -f1
+)"
+[[ "$recovery_push_line" -lt "$secret_line" ]] || {
+    echo "错误：必须先推送加密恢复副本，再写入 GitHub Secret" >&2
+    exit 1
+}
+
+if grep -Eq \
+    'verify_encrypted_recovery_volume|diskutil|recovery-volume|AGE_PASSPHRASE|--password-file' \
+    "$bootstrap"; then
+    echo "错误：bootstrap 包含旧 U 盘流程或非交互密码传递" >&2
     exit 1
 fi
 
