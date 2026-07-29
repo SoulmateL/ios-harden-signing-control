@@ -48,10 +48,11 @@ assert(job["timeout-minutes"] == 10, "生产签名 job 必须有 10 分钟超时
 steps = job.fetch("steps")
 checkout_steps = steps.select { |step| step.key?("uses") }
 assert(!checkout_steps.empty?, "缺少 checkout")
+approved_checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 checkout_steps.each do |step|
   assert(
-    step["uses"].match?(/\Aactions\/checkout@[0-9a-f]{40}\z/),
-    "所有 Action 必须固定到完整 commit SHA"
+    step["uses"] == approved_checkout,
+    "checkout 必须固定到已审查的 actions/checkout v7.0.1 commit"
   )
 end
 
