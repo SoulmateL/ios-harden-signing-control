@@ -16,6 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
+      - name: Check pinned age contract
+        run: bash Tests/age_tool_contract_test.sh
+
       - name: Install pinned age
         run: Scripts/install_pinned_age.sh --destination "$RUNNER_TEMP/age-v1.3.1"
 
@@ -32,7 +35,9 @@ jobs:
         run: bash Tests/sandbox_contract_test.sh
 
       - name: Check production bootstrap gate
-        run: bash Tests/bootstrap_contract_test.sh
+        run: |
+          bash Tests/bootstrap_contract_test.sh
+          bash Tests/restore_secret_contract_test.sh
 
       - name: Check fixture end-to-end contract
         run: bash Tests/fixture_e2e_contract_test.sh
